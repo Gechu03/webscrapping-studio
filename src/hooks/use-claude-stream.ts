@@ -41,6 +41,18 @@ export function useClaudeStream(): UseClaudeStreamReturn {
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Session expired. Please sign in again.');
+        }
+        if (response.status === 403) {
+          try {
+            const data = await response.json();
+            throw new Error(data.error || 'Claude Code account not connected. Go to Settings to connect.');
+          } catch (e) {
+            if (e instanceof Error && e.message !== `Unexpected token`) throw e;
+            throw new Error('Claude Code account not connected. Go to Settings to connect.');
+          }
+        }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 

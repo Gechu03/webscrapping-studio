@@ -83,6 +83,17 @@ function initializeDb(db: Database.Database) {
       FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
       FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_email TEXT PRIMARY KEY,
+      claude_access_token TEXT,
+      claude_refresh_token TEXT,
+      claude_expires_at INTEGER,
+      claude_scopes TEXT,
+      claude_subscription_type TEXT,
+      claude_connected_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add page_id column to components if it doesn't exist (legacy, kept for compat)

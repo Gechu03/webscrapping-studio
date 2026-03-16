@@ -1,6 +1,8 @@
 import { spawn, execFileSync, ChildProcess } from 'child_process';
-import { appendFileSync, mkdirSync } from 'fs';
+import { appendFileSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdtempSync } from 'fs';
 import path from 'path';
+import { tmpdir } from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
 // Resolve the Claude CLI entry point (bypasses cmd.exe wrapper on Windows)
@@ -108,6 +110,7 @@ async function executeClaudeProcess(
     allowedTools,
     timeout = 300_000, // 5 min default
     maxTurns,
+    credentials,
   } = options;
 
   const args = ['--print', '--dangerously-skip-permissions'];
@@ -124,6 +127,36 @@ async function executeClaudeProcess(
 
   const startTime = Date.now();
 
+  // If credentials provided, create temp HOME dir with .claude/.credentials.json
+  let tempHomeDir: string | null = null;
+  if (credentials) {
+    try {
+      tempHomeDir = mkdtempSync(path.join(tmpdir(), 'claude-home-'));
+      const claudeDir = path.join(tempHomeDir, '.claude');
+      mkdirSync(claudeDir, { recursive: true });
+
+      // Write credentials in Claude CLI expected format
+      const credentialsJson = {
+        claudeAiOauth: {
+          '9d1c250a-e61b-44d9-88ed-5944d1962f5e': {
+            accessToken: credentials.accessToken,
+            refreshToken: credentials.refreshToken,
+            expiresAt: credentials.expiresAt,
+            scopes: credentials.scopes,
+          },
+        },
+      };
+      writeFileSync(
+        path.join(claudeDir, '.credentials.json'),
+        JSON.stringify(credentialsJson, null, 2)
+      );
+      logToFile(`[claude-runner] Created temp HOME with credentials at ${tempHomeDir}`);
+    } catch (err) {
+      logToFile(`[claude-runner] Failed to create temp credentials: ${err}`);
+      tempHomeDir = null;
+    }
+  }
+
   return new Promise<ClaudeRunResult>((resolve, reject) => {
     // Remove all Claude Code env vars to allow spawning Claude CLI as a subprocess
     const cleanEnv = { ...process.env };
@@ -131,6 +164,12 @@ async function executeClaudeProcess(
       if (key === 'CLAUDECODE' || key.startsWith('CLAUDE_CODE')) {
         delete cleanEnv[key];
       }
+    }
+
+    // Point HOME to temp dir with credentials
+    if (tempHomeDir) {
+      cleanEnv.HOME = tempHomeDir;
+      cleanEnv.USERPROFILE = tempHomeDir; // Windows
     }
 
     logToFile(`[claude-runner] Spawning: ${claudeCli.exe} ${[...claudeCli.cliArgs, ...args].join(' ')} (prompt via stdin, ${prompt.length} chars)`);
@@ -163,6 +202,10 @@ async function executeClaudeProcess(
       clearTimeout(timeoutId);
       activeProcesses.delete(id);
 
+      // Clean up temp credentials directory
+      if (tempHomeDir) {
+        try { rmSync(tempHomeDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      }
 
       // Only stream error if process actually failed
       if (!result.success && result.error) {

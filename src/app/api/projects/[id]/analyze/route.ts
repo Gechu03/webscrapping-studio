@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
 import { getProject } from '@/lib/project-manager';
 import { runClaude } from '@/lib/claude-runner';
 import { buildAnalysisPrompt } from '@/lib/prompt-builder';
+import { getClaudeTokens, saveClaudeTokens } from '@/lib/user-settings';
+import { isTokenExpired, refreshAccessToken } from '@/lib/claude-oauth';
+import type { ClaudeCredentials } from '@/types/claude';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = getProject(id);
 
+  const session = await auth();
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  const project = getProject(id);
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
@@ -25,6 +34,34 @@ export async function POST(
     );
   }
 
+  // Look up user's Claude tokens
+  let tokens = getClaudeTokens(session.user.email);
+  if (!tokens) {
+    return NextResponse.json(
+      { error: 'Claude Code account not connected. Go to Settings to connect your account.', code: 'CLAUDE_NOT_CONNECTED' },
+      { status: 403 }
+    );
+  }
+
+  if (isTokenExpired(tokens.expiresAt)) {
+    try {
+      tokens = await refreshAccessToken(tokens.refreshToken);
+      saveClaudeTokens(session.user.email, tokens);
+    } catch {
+      return NextResponse.json(
+        { error: 'Claude Code token expired and refresh failed. Please reconnect in Settings.', code: 'CLAUDE_TOKEN_EXPIRED' },
+        { status: 403 }
+      );
+    }
+  }
+
+  const credentials: ClaudeCredentials = {
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: new Date(tokens.expiresAt * 1000).toISOString(),
+    scopes: tokens.scopes,
+  };
+
   const prompt = buildAnalysisPrompt(url, competitors, phases, project.config.sector);
 
   try {
@@ -32,6 +69,7 @@ export async function POST(
       workingDirectory: project.path,
       prompt,
       timeout: 3_600_000, // 60 min for full analysis
+      credentials,
     });
 
     return NextResponse.json({

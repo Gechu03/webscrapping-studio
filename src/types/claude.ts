@@ -1,9 +1,17 @@
+export interface ClaudeCredentials {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string; // ISO date string
+  scopes: string[];
+}
+
 export interface ClaudeRunnerOptions {
   workingDirectory: string;
   prompt: string;
   allowedTools?: string[];
   timeout?: number;
   maxTurns?: number;
+  credentials?: ClaudeCredentials;
 }
 
 export interface ClaudeStreamChunk {

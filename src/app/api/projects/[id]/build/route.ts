@@ -1,15 +1,27 @@
 import { NextRequest } from 'next/server';
+import { auth } from '@/lib/auth';
 import { getProject } from '@/lib/project-manager';
 import { runClaude } from '@/lib/claude-runner';
-import type { ClaudeStreamChunk } from '@/types/claude';
+import { getClaudeTokens, saveClaudeTokens } from '@/lib/user-settings';
+import { isTokenExpired, refreshAccessToken } from '@/lib/claude-oauth';
+import type { ClaudeStreamChunk, ClaudeCredentials } from '@/types/claude';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = getProject(id);
 
+  // Auth gate: require logged-in user with Claude tokens
+  const session = await auth();
+  if (!session?.user?.email) {
+    return new Response(JSON.stringify({ error: 'Authentication required' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  const project = getProject(id);
   if (!project) {
     return new Response(JSON.stringify({ error: 'Project not found' }), {
       status: 404,
@@ -26,6 +38,42 @@ export async function POST(
       headers: { 'Content-Type': 'application/json' },
     });
   }
+
+  // Look up user's Claude tokens
+  let tokens = getClaudeTokens(session.user.email);
+  if (!tokens) {
+    return new Response(
+      JSON.stringify({
+        error: 'Claude Code account not connected. Go to Settings to connect your account.',
+        code: 'CLAUDE_NOT_CONNECTED',
+      }),
+      { status: 403, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Refresh if expired
+  if (isTokenExpired(tokens.expiresAt)) {
+    try {
+      tokens = await refreshAccessToken(tokens.refreshToken);
+      saveClaudeTokens(session.user.email, tokens);
+    } catch {
+      return new Response(
+        JSON.stringify({
+          error: 'Claude Code token expired and refresh failed. Please reconnect in Settings.',
+          code: 'CLAUDE_TOKEN_EXPIRED',
+        }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+  }
+
+  // Build credentials object for Claude CLI
+  const credentials: ClaudeCredentials = {
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: new Date(tokens.expiresAt * 1000).toISOString(),
+    scopes: tokens.scopes,
+  };
 
   // Use Server-Sent Events for streaming
   const encoder = new TextEncoder();
@@ -52,6 +100,7 @@ export async function POST(
             workingDirectory: project.path,
             prompt,
             timeout: body.timeout || 300_000,
+            credentials,
           },
           (chunk: ClaudeStreamChunk) => {
             safeEnqueue(`data: ${JSON.stringify(chunk)}\n\n`);
