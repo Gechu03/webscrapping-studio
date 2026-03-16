@@ -5,9 +5,12 @@ RUN npm install -g @anthropic-ai/claude-code
 
 WORKDIR /app
 
-# Copy and install dependencies
+# Install build tools for native modules (better-sqlite3, lightningcss)
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+# Copy and install dependencies — rebuild native modules for Linux
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm install --force
 
 # Copy source
 COPY . .
