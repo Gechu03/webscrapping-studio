@@ -135,16 +135,14 @@ async function executeClaudeProcess(
       const claudeDir = path.join(tempHomeDir, '.claude');
       mkdirSync(claudeDir, { recursive: true });
 
-      // Write credentials in Claude CLI expected format (nested under client ID, expiresAt as ms timestamp)
+      // Write credentials in Claude CLI expected format (FLAT on claudeAiOauth — matches ~/.claude/.credentials.json)
       const credentialsJson = {
         claudeAiOauth: {
-          '9d1c250a-e61b-44d9-88ed-5944d1962f5e': {
-            accessToken: credentials.accessToken,
-            refreshToken: credentials.refreshToken,
-            expiresAt: credentials.expiresAt, // millisecond timestamp
-            scopes: credentials.scopes,
-            ...(credentials.subscriptionType && { subscriptionType: credentials.subscriptionType }),
-          },
+          accessToken: credentials.accessToken,
+          refreshToken: credentials.refreshToken,
+          expiresAt: credentials.expiresAt, // millisecond timestamp
+          scopes: credentials.scopes,
+          ...(credentials.subscriptionType && { subscriptionType: credentials.subscriptionType }),
         },
       };
       const credPath = path.join(claudeDir, '.credentials.json');
@@ -175,10 +173,24 @@ async function executeClaudeProcess(
       const accountFileExists = existsSync(path.join(tempHomeDir, '.claude.json'));
       const settingsFileExists = existsSync(path.join(claudeDir, 'settings.json'));
       const dirContents = readdirSync(tempHomeDir, { recursive: true });
+      const credFileContent = credFileExists ? readFileSync(credPath, 'utf-8') : 'FILE NOT FOUND';
       console.error(`[claude-runner] TEMP HOME: ${tempHomeDir}`);
       console.error(`[claude-runner] Files: cred=${credFileExists}, account=${accountFileExists}, settings=${settingsFileExists}`);
       console.error(`[claude-runner] Dir contents: ${JSON.stringify(dirContents)}`);
       console.error(`[claude-runner] Token prefix: ${credentials.accessToken.substring(0, 25)}..., expiresAt: ${credentials.expiresAt}`);
+      console.error(`[claude-runner] Cred file keys: ${Object.keys(JSON.parse(credFileContent).claudeAiOauth || {}).join(', ')}`);
+
+      // Diagnostic: check Claude CLI version with this HOME
+      try {
+        const versionOut = execFileSync(claudeCli.exe, [...claudeCli.cliArgs, '--version'], {
+          encoding: 'utf-8',
+          timeout: 10000,
+          env: { ...process.env, HOME: tempHomeDir, USERPROFILE: tempHomeDir },
+        });
+        console.error(`[claude-runner] Claude CLI version: ${versionOut.trim()}`);
+      } catch (vErr) {
+        console.error(`[claude-runner] Claude --version failed: ${vErr}`);
+      }
     } catch (err) {
       console.error(`[claude-runner] Failed to create temp credentials: ${err}`);
       logToFile(`[claude-runner] Failed to create temp credentials: ${err}`);
