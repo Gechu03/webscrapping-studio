@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    saveClaudeTokens(session.user.email, {
+    await saveClaudeTokens(session.user.email, {
       accessToken,
       refreshToken,
       expiresAt: expiresAt || Math.floor(Date.now() / 1000) + 28800,

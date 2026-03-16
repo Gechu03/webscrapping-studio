@@ -8,6 +8,6 @@ export async function POST() {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  deleteClaudeTokens(session.user.email);
+  await deleteClaudeTokens(session.user.email);
   return NextResponse.json({ success: true });
 }

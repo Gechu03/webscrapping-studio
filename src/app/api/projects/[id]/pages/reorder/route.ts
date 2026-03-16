@@ -6,7 +6,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = getProject(id);
+  const project = await getProject(id);
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
@@ -18,6 +18,6 @@ export async function PUT(
     return NextResponse.json({ error: 'orderedIds array required' }, { status: 400 });
   }
 
-  reorderPages(id, orderedIds);
+  await reorderPages(id, orderedIds);
   return NextResponse.json({ success: true });
 }

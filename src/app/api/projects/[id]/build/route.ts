@@ -21,7 +21,7 @@ export async function POST(
     });
   }
 
-  const project = getProject(id);
+  const project = await getProject(id);
   if (!project) {
     return new Response(JSON.stringify({ error: 'Project not found' }), {
       status: 404,
@@ -40,7 +40,7 @@ export async function POST(
   }
 
   // Look up user's Claude tokens
-  let tokens = getClaudeTokens(session.user.email);
+  let tokens = await getClaudeTokens(session.user.email);
   if (!tokens) {
     return new Response(
       JSON.stringify({
@@ -55,7 +55,7 @@ export async function POST(
   if (isTokenExpired(tokens.expiresAt)) {
     try {
       tokens = await refreshAccessToken(tokens.refreshToken);
-      saveClaudeTokens(session.user.email, tokens);
+      await saveClaudeTokens(session.user.email, tokens);
     } catch {
       return new Response(
         JSON.stringify({

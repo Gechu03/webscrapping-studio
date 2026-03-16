@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
-import { getDb } from '@/lib/db';
+import { query } from '@/lib/db';
 import { getProject, linkComponentToPage } from '@/lib/project-manager';
 
 export async function GET(
@@ -10,7 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = getProject(id);
+  const project = await getProject(id);
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
@@ -22,7 +22,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = getProject(id);
+  const project = await getProject(id);
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
@@ -37,45 +37,49 @@ export async function POST(
     );
   }
 
-  const db = getDb();
   const componentId = uuidv4();
   const now = new Date().toISOString();
 
   // Check if component with this type already exists for this project (shared)
-  const existing = db.prepare(
-    'SELECT id FROM components WHERE project_id = ? AND type = ?'
-  ).get(id, type) as { id: string } | undefined;
+  const existing = await query(
+    'SELECT id FROM components WHERE project_id = $1 AND type = $2',
+    [id, type]
+  );
 
-  if (existing) {
+  if (existing.rows.length > 0) {
     // Component already exists — just link to this page
     if (pageId) {
-      linkComponentToPage(pageId, existing.id, 0);
+      await linkComponentToPage(pageId, existing.rows[0].id, 0);
     }
     return NextResponse.json(
-      { id: existing.id, name, type, version: 1, status: 'draft' },
+      { id: existing.rows[0].id, name, type, version: 1, status: 'draft' },
       { status: 200 }
     );
   }
 
   // Get next sort order
-  const maxOrder = db
-    .prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 as next_order FROM components WHERE project_id = ?')
-    .get(id) as { next_order: number };
+  const maxOrder = await query(
+    'SELECT COALESCE(MAX(sort_order), -1) + 1 as next_order FROM components WHERE project_id = $1',
+    [id]
+  );
+  const nextOrder = parseInt(maxOrder.rows[0].next_order);
 
-  db.prepare(
+  await query(
     `INSERT INTO components (id, project_id, name, type, current_version, status, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 1, 'draft', ?, ?, ?)`
-  ).run(componentId, id, name, type, maxOrder.next_order, now, now);
+     VALUES ($1, $2, $3, $4, 1, 'draft', $5, $6, $7)`,
+    [componentId, id, name, type, nextOrder, now, now]
+  );
 
   // Create initial version
-  db.prepare(
+  await query(
     `INSERT INTO component_versions (component_id, version, code, created_at)
-     VALUES (?, 1, ?, ?)`
-  ).run(componentId, code, now);
+     VALUES ($1, 1, $2, $3)`,
+    [componentId, code, now]
+  );
 
   // Link to page if provided
   if (pageId) {
-    linkComponentToPage(pageId, componentId, maxOrder.next_order);
+    await linkComponentToPage(pageId, componentId, nextOrder);
   }
 
   return NextResponse.json(
@@ -89,7 +93,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = getProject(id);
+  const project = await getProject(id);
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
@@ -99,22 +103,20 @@ export async function DELETE(
     return NextResponse.json({ error: 'componentId parameter required' }, { status: 400 });
   }
 
-  const db = getDb();
-
-  const comp = db.prepare('SELECT type FROM components WHERE id = ? AND project_id = ?').get(componentId, id) as { type: string } | undefined;
-  if (!comp) {
+  const comp = await query('SELECT type FROM components WHERE id = $1 AND project_id = $2', [componentId, id]);
+  if (comp.rows.length === 0) {
     return NextResponse.json({ error: 'Component not found' }, { status: 404 });
   }
 
   // Delete join table entries, versions, and component
-  db.prepare('DELETE FROM page_components WHERE component_id = ?').run(componentId);
-  db.prepare('DELETE FROM component_versions WHERE component_id = ?').run(componentId);
-  db.prepare('DELETE FROM components WHERE id = ?').run(componentId);
+  await query('DELETE FROM page_components WHERE component_id = $1', [componentId]);
+  await query('DELETE FROM component_versions WHERE component_id = $1', [componentId]);
+  await query('DELETE FROM components WHERE id = $1', [componentId]);
 
   // Delete file from flat components/ directory
   const extensions = ['html', 'tsx', 'vue'];
   for (const ext of extensions) {
-    const filePath = path.join(project.path, 'components', `${comp.type}.${ext}`);
+    const filePath = path.join(project.path, 'components', `${comp.rows[0].type}.${ext}`);
     if (fs.existsSync(filePath)) {
       try { fs.unlinkSync(filePath); } catch { /* ignore */ }
     }

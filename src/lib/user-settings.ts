@@ -1,4 +1,4 @@
-import { getDb } from './db';
+import { query } from './db';
 import {
   encryptToken,
   decryptToken,
@@ -14,18 +14,13 @@ export interface ClaudeConnectionStatus {
   expired?: boolean;
 }
 
-export function getClaudeTokens(email: string): ClaudeTokens | null {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT claude_access_token, claude_refresh_token, claude_expires_at, claude_scopes, claude_subscription_type FROM user_settings WHERE user_email = ?'
-  ).get(email) as {
-    claude_access_token: string | null;
-    claude_refresh_token: string | null;
-    claude_expires_at: number | null;
-    claude_scopes: string | null;
-    claude_subscription_type: string | null;
-  } | undefined;
+export async function getClaudeTokens(email: string): Promise<ClaudeTokens | null> {
+  const result = await query(
+    'SELECT claude_access_token, claude_refresh_token, claude_expires_at, claude_scopes, claude_subscription_type FROM user_settings WHERE user_email = $1',
+    [email]
+  );
 
+  const row = result.rows[0];
   if (!row || !row.claude_access_token || !row.claude_refresh_token) {
     return null;
   }
@@ -44,54 +39,50 @@ export function getClaudeTokens(email: string): ClaudeTokens | null {
   }
 }
 
-export function saveClaudeTokens(email: string, tokens: ClaudeTokens): void {
-  const db = getDb();
-  db.prepare(`
-    INSERT INTO user_settings (user_email, claude_access_token, claude_refresh_token, claude_expires_at, claude_scopes, claude_subscription_type, claude_connected_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+export async function saveClaudeTokens(email: string, tokens: ClaudeTokens): Promise<void> {
+  await query(
+    `INSERT INTO user_settings (user_email, claude_access_token, claude_refresh_token, claude_expires_at, claude_scopes, claude_subscription_type, claude_connected_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
     ON CONFLICT(user_email) DO UPDATE SET
-      claude_access_token = excluded.claude_access_token,
-      claude_refresh_token = excluded.claude_refresh_token,
-      claude_expires_at = excluded.claude_expires_at,
-      claude_scopes = excluded.claude_scopes,
-      claude_subscription_type = excluded.claude_subscription_type,
-      updated_at = datetime('now')
-  `).run(
-    email,
-    encryptToken(tokens.accessToken),
-    encryptToken(tokens.refreshToken),
-    tokens.expiresAt,
-    JSON.stringify(tokens.scopes),
-    tokens.subscriptionType || null,
+      claude_access_token = EXCLUDED.claude_access_token,
+      claude_refresh_token = EXCLUDED.claude_refresh_token,
+      claude_expires_at = EXCLUDED.claude_expires_at,
+      claude_scopes = EXCLUDED.claude_scopes,
+      claude_subscription_type = EXCLUDED.claude_subscription_type,
+      updated_at = NOW()`,
+    [
+      email,
+      encryptToken(tokens.accessToken),
+      encryptToken(tokens.refreshToken),
+      tokens.expiresAt,
+      JSON.stringify(tokens.scopes),
+      tokens.subscriptionType || null,
+    ]
   );
 }
 
-export function deleteClaudeTokens(email: string): void {
-  const db = getDb();
-  db.prepare(`
-    UPDATE user_settings SET
+export async function deleteClaudeTokens(email: string): Promise<void> {
+  await query(
+    `UPDATE user_settings SET
       claude_access_token = NULL,
       claude_refresh_token = NULL,
       claude_expires_at = NULL,
       claude_scopes = NULL,
       claude_subscription_type = NULL,
       claude_connected_at = NULL,
-      updated_at = datetime('now')
-    WHERE user_email = ?
-  `).run(email);
+      updated_at = NOW()
+    WHERE user_email = $1`,
+    [email]
+  );
 }
 
-export function getConnectionStatus(email: string): ClaudeConnectionStatus {
-  const db = getDb();
-  const row = db.prepare(
-    'SELECT claude_expires_at, claude_subscription_type, claude_connected_at, claude_access_token FROM user_settings WHERE user_email = ?'
-  ).get(email) as {
-    claude_expires_at: number | null;
-    claude_subscription_type: string | null;
-    claude_connected_at: string | null;
-    claude_access_token: string | null;
-  } | undefined;
+export async function getConnectionStatus(email: string): Promise<ClaudeConnectionStatus> {
+  const result = await query(
+    'SELECT claude_expires_at, claude_subscription_type, claude_connected_at, claude_access_token FROM user_settings WHERE user_email = $1',
+    [email]
+  );
 
+  const row = result.rows[0];
   if (!row || !row.claude_access_token) {
     return { connected: false };
   }

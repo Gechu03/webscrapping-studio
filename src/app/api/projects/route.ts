@@ -4,7 +4,7 @@ import type { ProjectConfig } from '@/types/project';
 
 export async function GET() {
   try {
-    const projects = listProjects();
+    const projects = await listProjects();
     return NextResponse.json(projects);
   } catch (error) {
     console.error('Failed to list projects:', error);
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const project = createProject(config);
+    const project = await createProject(config);
     return NextResponse.json(project, { status: 201 });
   } catch (error) {
     console.error('Failed to create project:', error);

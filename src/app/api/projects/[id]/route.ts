@@ -7,7 +7,7 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const project = getProject(id);
+    const project = await getProject(id);
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
@@ -27,7 +27,7 @@ export async function DELETE(
 ) {
   const { id } = await params;
   try {
-    const deleted = deleteProject(id);
+    const deleted = await deleteProject(id);
     if (!deleted) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }

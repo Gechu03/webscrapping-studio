@@ -18,7 +18,7 @@ export async function POST(
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
-  const project = getProject(id);
+  const project = await getProject(id);
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
@@ -35,7 +35,7 @@ export async function POST(
   }
 
   // Look up user's Claude tokens
-  let tokens = getClaudeTokens(session.user.email);
+  let tokens = await getClaudeTokens(session.user.email);
   if (!tokens) {
     return NextResponse.json(
       { error: 'Claude Code account not connected. Go to Settings to connect your account.', code: 'CLAUDE_NOT_CONNECTED' },
@@ -46,7 +46,7 @@ export async function POST(
   if (isTokenExpired(tokens.expiresAt)) {
     try {
       tokens = await refreshAccessToken(tokens.refreshToken);
-      saveClaudeTokens(session.user.email, tokens);
+      await saveClaudeTokens(session.user.email, tokens);
     } catch {
       return NextResponse.json(
         { error: 'Claude Code token expired and refresh failed. Please reconnect in Settings.', code: 'CLAUDE_TOKEN_EXPIRED' },

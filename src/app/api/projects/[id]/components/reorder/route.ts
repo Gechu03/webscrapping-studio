@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getPool } from '@/lib/db';
 import { getProject } from '@/lib/project-manager';
 
 export async function PUT(
@@ -7,7 +7,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = getProject(id);
+  const project = await getProject(id);
   if (!project) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
@@ -19,17 +19,23 @@ export async function PUT(
     return NextResponse.json({ error: 'orders array required' }, { status: 400 });
   }
 
-  const db = getDb();
-  const stmt = db.prepare('UPDATE components SET sort_order = ?, updated_at = ? WHERE id = ? AND project_id = ?');
   const now = new Date().toISOString();
-
-  const updateMany = db.transaction(() => {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN');
     for (const { id: componentId, order } of orders) {
-      stmt.run(order, now, componentId, id);
+      await client.query(
+        'UPDATE components SET sort_order = $1, updated_at = $2 WHERE id = $3 AND project_id = $4',
+        [order, now, componentId, id]
+      );
     }
-  });
-
-  updateMany();
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 
   return NextResponse.json({ success: true });
 }

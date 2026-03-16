@@ -1,6 +1,6 @@
 FROM node:20-bookworm
 
-# Install build tools for native modules (better-sqlite3, lightningcss)
+# Install build tools for native modules (lightningcss)
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
 # Install Claude CLI globally
@@ -25,8 +25,8 @@ RUN npm run build
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Create persistent data directories and set ownership
-RUN mkdir -p data ../projects /home/appuser/.claude && \
+# Create persistent directories and set ownership
+RUN mkdir -p ../projects /home/appuser/.claude && \
     chown -R appuser:appuser /app ../projects /home/appuser
 
 # Switch to non-root user

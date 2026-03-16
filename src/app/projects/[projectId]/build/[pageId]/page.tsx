@@ -670,7 +670,7 @@ export default function BuilderEditorPage({
             breakpoint={breakpoint}
             customWidth={customWidth}
             srcDoc={composedHtml}
-            className="flex-1 min-h-0"
+            className="flex-1 min-h-0 max-h-[75vh]"
           />
 
           <div className="flex justify-center py-2 flex-shrink-0">

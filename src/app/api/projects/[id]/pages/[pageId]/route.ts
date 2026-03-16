@@ -6,7 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string; pageId: string }> }
 ) {
   const { pageId } = await params;
-  const page = getPage(pageId);
+  const page = await getPage(pageId);
   if (!page) {
     return NextResponse.json({ error: 'Page not found' }, { status: 404 });
   }
@@ -20,12 +20,12 @@ export async function PUT(
   const { pageId } = await params;
   const body = await request.json();
 
-  const success = updatePage(pageId, { name: body.name, slug: body.slug });
+  const success = await updatePage(pageId, { name: body.name, slug: body.slug });
   if (!success) {
     return NextResponse.json({ error: 'Page not found' }, { status: 404 });
   }
 
-  const updated = getPage(pageId);
+  const updated = await getPage(pageId);
   return NextResponse.json(updated);
 }
 
@@ -34,7 +34,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; pageId: string }> }
 ) {
   const { pageId } = await params;
-  const success = deletePage(pageId);
+  const success = await deletePage(pageId);
   if (!success) {
     return NextResponse.json(
       { error: 'Cannot delete page (not found or last page)' },

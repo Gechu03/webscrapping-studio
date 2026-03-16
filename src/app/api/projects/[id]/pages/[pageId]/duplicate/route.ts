@@ -6,7 +6,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string; pageId: string }> }
 ) {
   const { pageId } = await params;
-  const page = duplicatePage(pageId);
+  const page = await duplicatePage(pageId);
   if (!page) {
     return NextResponse.json({ error: 'Page not found' }, { status: 404 });
   }
