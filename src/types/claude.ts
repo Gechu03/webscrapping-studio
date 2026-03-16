@@ -1,8 +1,9 @@
 export interface ClaudeCredentials {
   accessToken: string;
   refreshToken: string;
-  expiresAt: string; // ISO date string
+  expiresAt: number; // millisecond timestamp (matching Claude CLI format)
   scopes: string[];
+  subscriptionType?: string;
 }
 
 export interface ClaudeRunnerOptions {

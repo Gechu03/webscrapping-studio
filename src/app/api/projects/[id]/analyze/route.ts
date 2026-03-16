@@ -58,8 +58,9 @@ export async function POST(
   const credentials: ClaudeCredentials = {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
-    expiresAt: new Date(tokens.expiresAt * 1000).toISOString(),
+    expiresAt: tokens.expiresAt * 1000, // seconds → milliseconds
     scopes: tokens.scopes,
+    subscriptionType: tokens.subscriptionType,
   };
 
   const prompt = buildAnalysisPrompt(url, competitors, phases, project.config.sector);

@@ -67,12 +67,13 @@ export async function POST(
     }
   }
 
-  // Build credentials object for Claude CLI
+  // Build credentials object for Claude CLI (expiresAt in ms, matching CLI format)
   const credentials: ClaudeCredentials = {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
-    expiresAt: new Date(tokens.expiresAt * 1000).toISOString(),
+    expiresAt: tokens.expiresAt * 1000, // seconds → milliseconds
     scopes: tokens.scopes,
+    subscriptionType: tokens.subscriptionType,
   };
 
   // Use Server-Sent Events for streaming

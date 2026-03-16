@@ -135,22 +135,22 @@ async function executeClaudeProcess(
       const claudeDir = path.join(tempHomeDir, '.claude');
       mkdirSync(claudeDir, { recursive: true });
 
-      // Write credentials in Claude CLI expected format
+      // Write credentials in Claude CLI expected format (nested under client ID, expiresAt as ms timestamp)
       const credentialsJson = {
         claudeAiOauth: {
           '9d1c250a-e61b-44d9-88ed-5944d1962f5e': {
             accessToken: credentials.accessToken,
             refreshToken: credentials.refreshToken,
-            expiresAt: credentials.expiresAt,
+            expiresAt: credentials.expiresAt, // millisecond timestamp
             scopes: credentials.scopes,
+            ...(credentials.subscriptionType && { subscriptionType: credentials.subscriptionType }),
           },
         },
       };
-      writeFileSync(
-        path.join(claudeDir, '.credentials.json'),
-        JSON.stringify(credentialsJson, null, 2)
-      );
-      logToFile(`[claude-runner] Created temp HOME with credentials at ${tempHomeDir}`);
+      const credPath = path.join(claudeDir, '.credentials.json');
+      writeFileSync(credPath, JSON.stringify(credentialsJson, null, 2));
+      logToFile(`[claude-runner] Created temp HOME with credentials at ${tempHomeDir}, file: ${credPath}`);
+      logToFile(`[claude-runner] Credentials expiresAt: ${credentials.expiresAt}, token prefix: ${credentials.accessToken.substring(0, 20)}...`);
     } catch (err) {
       logToFile(`[claude-runner] Failed to create temp credentials: ${err}`);
       tempHomeDir = null;
@@ -173,7 +173,7 @@ async function executeClaudeProcess(
     }
 
     logToFile(`[claude-runner] Spawning: ${claudeCli.exe} ${[...claudeCli.cliArgs, ...args].join(' ')} (prompt via stdin, ${prompt.length} chars)`);
-    logToFile(`[claude-runner] CWD: ${workingDirectory}`);
+    logToFile(`[claude-runner] CWD: ${workingDirectory}, HOME: ${cleanEnv.HOME || '(default)'}`);
 
     const proc = spawn(claudeCli.exe, [...claudeCli.cliArgs, ...args], {
       cwd: workingDirectory,
