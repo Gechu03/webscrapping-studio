@@ -59,7 +59,14 @@ export function ClaudeConnection() {
     if (!manualCredentials.trim()) return;
     setSubmitting(true);
     try {
-      const parsed = JSON.parse(manualCredentials);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(manualCredentials);
+      } catch {
+        toast.error('Invalid JSON — check that you copied the full file contents');
+        setSubmitting(false);
+        return;
+      }
       const res = await fetch('/api/auth/claude/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,8 +80,8 @@ export function ClaudeConnection() {
         const data = await res.json();
         toast.error(data.error || 'Failed to save credentials');
       }
-    } catch {
-      toast.error('Invalid JSON format');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save credentials');
     } finally {
       setSubmitting(false);
     }

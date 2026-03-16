@@ -3,16 +3,28 @@ import { auth } from '@/lib/auth';
 import { saveClaudeTokens } from '@/lib/user-settings';
 
 export async function POST(request: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
   try {
-    const body = await request.json();
+    const session = await auth();
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    // Check encryption key is configured
+    if (!process.env.CLAUDE_TOKEN_SECRET) {
+      return NextResponse.json(
+        { error: 'Server misconfigured: CLAUDE_TOKEN_SECRET env var is not set' },
+        { status: 500 }
+      );
+    }
+
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
 
     // Accept raw credentials JSON (from ~/.claude/.credentials.json)
-    // Format: { "claudeAiOauth": { "<client_id>": { "accessToken": "...", "refreshToken": "...", "expiresAt": "...", "scopes": [...] } } }
     let accessToken: string | undefined;
     let refreshToken: string | undefined;
     let expiresAt: number | undefined;
@@ -20,43 +32,45 @@ export async function POST(request: NextRequest) {
     let subscriptionType: string | undefined;
 
     if (body.claudeAiOauth) {
-      const oauth = body.claudeAiOauth;
+      const oauth = body.claudeAiOauth as Record<string, unknown>;
 
       // Detect format: tokens directly on claudeAiOauth vs nested under client ID
-      let entry: { accessToken?: string; refreshToken?: string; expiresAt?: string | number; scopes?: string[]; subscriptionType?: string } | undefined;
+      let entry: Record<string, unknown> | undefined;
 
       if (oauth.accessToken) {
         // Flat format: {"claudeAiOauth": {"accessToken": "...", ...}}
         entry = oauth;
       } else {
         // Nested format: {"claudeAiOauth": {"<client_id>": {"accessToken": "...", ...}}}
-        const values = Object.values(oauth) as Array<typeof entry>;
-        entry = values[0];
+        const values = Object.values(oauth);
+        if (values[0] && typeof values[0] === 'object') {
+          entry = values[0] as Record<string, unknown>;
+        }
       }
 
       if (entry) {
-        accessToken = entry.accessToken;
-        refreshToken = entry.refreshToken;
+        accessToken = entry.accessToken as string | undefined;
+        refreshToken = entry.refreshToken as string | undefined;
         if (typeof entry.expiresAt === 'string') {
           expiresAt = Math.floor(new Date(entry.expiresAt).getTime() / 1000);
         } else if (typeof entry.expiresAt === 'number') {
           // Detect ms vs seconds: if > year 2100 in seconds, it's milliseconds
           expiresAt = entry.expiresAt > 4_000_000_000 ? Math.floor(entry.expiresAt / 1000) : entry.expiresAt;
         }
-        scopes = entry.scopes;
-        subscriptionType = entry.subscriptionType;
+        scopes = entry.scopes as string[] | undefined;
+        subscriptionType = entry.subscriptionType as string | undefined;
       }
     } else if (body.accessToken && body.refreshToken) {
-      // Flat format
-      accessToken = body.accessToken;
-      refreshToken = body.refreshToken;
-      expiresAt = body.expiresAt;
-      scopes = body.scopes;
+      // Flat format without claudeAiOauth wrapper
+      accessToken = body.accessToken as string;
+      refreshToken = body.refreshToken as string;
+      expiresAt = body.expiresAt as number | undefined;
+      scopes = body.scopes as string[] | undefined;
     }
 
     if (!accessToken || !refreshToken) {
       return NextResponse.json(
-        { error: 'Invalid credentials format. Paste the contents of ~/.claude/.credentials.json' },
+        { error: 'Could not find accessToken/refreshToken. Paste the contents of ~/.claude/.credentials.json' },
         { status: 400 }
       );
     }
@@ -70,10 +84,9 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json(
-      { error: 'Invalid JSON format' },
-      { status: 400 }
-    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown server error';
+    console.error('[claude-manual] Error saving credentials:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
