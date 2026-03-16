@@ -2,13 +2,11 @@ import crypto from 'crypto';
 
 // Claude Code OAuth configuration (from CLI source)
 const CLAUDE_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
-const CLAUDE_AUTH_URL = 'https://platform.claude.com/oauth/authorize';
 const CLAUDE_TOKEN_URL = 'https://platform.claude.com/v1/oauth/token';
 const CLAUDE_SCOPES = 'user:inference user:profile user:sessions:claude_code user:mcp_servers';
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
-const AUTH_TAG_LENGTH = 16;
 
 export interface ClaudeTokens {
   accessToken: string;
@@ -16,11 +14,6 @@ export interface ClaudeTokens {
   expiresAt: number; // Unix timestamp in seconds
   scopes: string[];
   subscriptionType?: string;
-}
-
-export interface PKCEChallenge {
-  codeVerifier: string;
-  codeChallenge: string;
 }
 
 function getEncryptionKey(): Buffer {
@@ -33,68 +26,6 @@ function getEncryptionKey(): Buffer {
     return Buffer.from(secret, 'hex');
   }
   return crypto.createHash('sha256').update(secret).digest();
-}
-
-// PKCE helpers
-function base64UrlEncode(buffer: Buffer): string {
-  return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-export function generatePKCE(): PKCEChallenge {
-  const codeVerifier = base64UrlEncode(crypto.randomBytes(32));
-  const codeChallenge = base64UrlEncode(
-    crypto.createHash('sha256').update(codeVerifier).digest()
-  );
-  return { codeVerifier, codeChallenge };
-}
-
-export function buildAuthorizationUrl(
-  redirectUri: string,
-  state: string,
-  codeChallenge: string
-): string {
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: CLAUDE_CLIENT_ID,
-    redirect_uri: redirectUri,
-    scope: CLAUDE_SCOPES,
-    state,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-  });
-  return `${CLAUDE_AUTH_URL}?${params.toString()}`;
-}
-
-export async function exchangeCodeForTokens(
-  code: string,
-  redirectUri: string,
-  codeVerifier: string
-): Promise<ClaudeTokens> {
-  const response = await fetch(CLAUDE_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: CLAUDE_CLIENT_ID,
-      code,
-      redirect_uri: redirectUri,
-      code_verifier: codeVerifier,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Token exchange failed (${response.status}): ${body}`);
-  }
-
-  const data = await response.json();
-  return {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token,
-    expiresAt: Math.floor(Date.now() / 1000) + (data.expires_in || 28800),
-    scopes: (data.scope || CLAUDE_SCOPES).split(' '),
-    subscriptionType: data.subscription_type,
-  };
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<ClaudeTokens> {

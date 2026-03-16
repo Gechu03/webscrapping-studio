@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,13 +17,11 @@ interface ConnectionStatus {
 }
 
 export function ClaudeConnection() {
-  const searchParams = useSearchParams();
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [showManual, setShowManual] = useState(false);
   const [manualCredentials, setManualCredentials] = useState('');
-  const [submittingManual, setSubmittingManual] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -43,22 +40,6 @@ export function ClaudeConnection() {
     fetchStatus();
   }, [fetchStatus]);
 
-  // Handle URL params from OAuth callback
-  useEffect(() => {
-    if (searchParams.get('claude_connected') === 'true') {
-      toast.success('Claude Code connected successfully!');
-      fetchStatus();
-    }
-    const error = searchParams.get('claude_error');
-    if (error) {
-      toast.error(`Claude connection failed: ${error}`);
-    }
-  }, [searchParams, fetchStatus]);
-
-  const handleConnect = () => {
-    window.location.href = '/api/auth/claude';
-  };
-
   const handleDisconnect = async () => {
     setDisconnecting(true);
     try {
@@ -74,9 +55,9 @@ export function ClaudeConnection() {
     }
   };
 
-  const handleManualSubmit = async () => {
+  const handleSubmit = async () => {
     if (!manualCredentials.trim()) return;
-    setSubmittingManual(true);
+    setSubmitting(true);
     try {
       const parsed = JSON.parse(manualCredentials);
       const res = await fetch('/api/auth/claude/manual', {
@@ -87,7 +68,6 @@ export function ClaudeConnection() {
       if (res.ok) {
         toast.success('Claude Code credentials saved!');
         setManualCredentials('');
-        setShowManual(false);
         fetchStatus();
       } else {
         const data = await res.json();
@@ -96,7 +76,7 @@ export function ClaudeConnection() {
     } catch {
       toast.error('Invalid JSON format');
     } finally {
-      setSubmittingManual(false);
+      setSubmitting(false);
     }
   };
 
@@ -160,8 +140,8 @@ export function ClaudeConnection() {
             <Separator />
             <div className="flex gap-2">
               {status.expired && (
-                <Button size="sm" onClick={handleConnect}>
-                  Reconnect
+                <Button size="sm" variant="default" onClick={() => setStatus({ connected: false })}>
+                  Update Credentials
                 </Button>
               )}
               <Button
@@ -187,41 +167,29 @@ export function ClaudeConnection() {
             </div>
             <Separator />
             <div className="space-y-3">
-              <Button size="sm" onClick={handleConnect}>
-                Connect with Claude
-              </Button>
-
-              <div>
-                <button
-                  className="text-xs text-muted-foreground underline hover:text-foreground"
-                  onClick={() => setShowManual(!showManual)}
-                >
-                  {showManual ? 'Hide manual connection' : 'Manual connection (paste credentials)'}
-                </button>
-
-                {showManual && (
-                  <div className="mt-3 space-y-2">
-                    <p className="text-xs text-muted-foreground">
-                      Run <code className="bg-muted px-1 rounded">claude login</code> locally, then
-                      paste the contents of <code className="bg-muted px-1 rounded">~/.claude/.credentials.json</code>
-                    </p>
-                    <Textarea
-                      placeholder='{"claudeAiOauth": { ... }}'
-                      value={manualCredentials}
-                      onChange={(e) => setManualCredentials(e.target.value)}
-                      rows={6}
-                      className="font-mono text-xs"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={handleManualSubmit}
-                      disabled={submittingManual || !manualCredentials.trim()}
-                    >
-                      {submittingManual ? 'Saving...' : 'Save Credentials'}
-                    </Button>
-                  </div>
-                )}
+              <div className="rounded-md bg-muted/50 p-3 space-y-2">
+                <p className="text-sm font-medium">How to connect</p>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Install Claude Code CLI locally: <code className="bg-muted px-1 rounded">npm i -g @anthropic-ai/claude-code</code></li>
+                  <li>Run <code className="bg-muted px-1 rounded">claude login</code> and authenticate in your browser</li>
+                  <li>Copy the contents of <code className="bg-muted px-1 rounded">~/.claude/.credentials.json</code></li>
+                  <li>Paste below and save</li>
+                </ol>
               </div>
+              <Textarea
+                placeholder='{"claudeAiOauth": { ... }}'
+                value={manualCredentials}
+                onChange={(e) => setManualCredentials(e.target.value)}
+                rows={6}
+                className="font-mono text-xs"
+              />
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                disabled={submitting || !manualCredentials.trim()}
+              >
+                {submitting ? 'Saving...' : 'Save Credentials'}
+              </Button>
             </div>
           </>
         )}
