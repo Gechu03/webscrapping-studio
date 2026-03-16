@@ -1,5 +1,5 @@
 import { spawn, execFileSync, ChildProcess } from 'child_process';
-import { appendFileSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { appendFileSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, readdirSync } from 'fs';
 import { mkdtempSync } from 'fs';
 import path from 'path';
 import { tmpdir } from 'os';
@@ -169,7 +169,18 @@ async function executeClaudeProcess(
 
       logToFile(`[claude-runner] Created temp HOME with credentials at ${tempHomeDir}`);
       logToFile(`[claude-runner] Credentials expiresAt: ${credentials.expiresAt}, token prefix: ${credentials.accessToken.substring(0, 20)}...`);
+
+      // Verify files were written (diagnostic logging to Railway)
+      const credFileExists = existsSync(credPath);
+      const accountFileExists = existsSync(path.join(tempHomeDir, '.claude.json'));
+      const settingsFileExists = existsSync(path.join(claudeDir, 'settings.json'));
+      const dirContents = readdirSync(tempHomeDir, { recursive: true });
+      console.error(`[claude-runner] TEMP HOME: ${tempHomeDir}`);
+      console.error(`[claude-runner] Files: cred=${credFileExists}, account=${accountFileExists}, settings=${settingsFileExists}`);
+      console.error(`[claude-runner] Dir contents: ${JSON.stringify(dirContents)}`);
+      console.error(`[claude-runner] Token prefix: ${credentials.accessToken.substring(0, 25)}..., expiresAt: ${credentials.expiresAt}`);
     } catch (err) {
+      console.error(`[claude-runner] Failed to create temp credentials: ${err}`);
       logToFile(`[claude-runner] Failed to create temp credentials: ${err}`);
       tempHomeDir = null;
     }
@@ -190,7 +201,10 @@ async function executeClaudeProcess(
       cleanEnv.USERPROFILE = tempHomeDir; // Windows
     }
 
-    logToFile(`[claude-runner] Spawning: ${claudeCli.exe} ${[...claudeCli.cliArgs, ...args].join(' ')} (prompt via stdin, ${prompt.length} chars)`);
+    const spawnCmd = `${claudeCli.exe} ${[...claudeCli.cliArgs, ...args].join(' ')}`;
+    console.error(`[claude-runner] Spawning: ${spawnCmd}`);
+    console.error(`[claude-runner] CWD: ${workingDirectory}, HOME: ${cleanEnv.HOME || '(default)'}`);
+    logToFile(`[claude-runner] Spawning: ${spawnCmd} (prompt via stdin, ${prompt.length} chars)`);
     logToFile(`[claude-runner] CWD: ${workingDirectory}, HOME: ${cleanEnv.HOME || '(default)'}`);
 
     const proc = spawn(claudeCli.exe, [...claudeCli.cliArgs, ...args], {
@@ -274,10 +288,12 @@ async function executeClaudeProcess(
     proc.stderr.on('data', (data: Buffer) => {
       const chunk = data.toString();
       error += chunk;
+      console.error(`[claude-runner] STDERR: ${chunk.substring(0, 500)}`);
       logToFile(`[claude-runner] stderr: ${chunk.substring(0, 200)}`);
     });
 
     proc.on('close', (code) => {
+      console.error(`[claude-runner] Process closed with code ${code}, stdout: ${output.substring(0, 300)}, stderr: ${error.substring(0, 300)}`);
       logToFile(`[claude-runner] Process closed with code ${code}, output length: ${output.length}, error length: ${error.length}`);
       settle({
         success: code === 0,
