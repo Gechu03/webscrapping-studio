@@ -149,7 +149,25 @@ async function executeClaudeProcess(
       };
       const credPath = path.join(claudeDir, '.credentials.json');
       writeFileSync(credPath, JSON.stringify(credentialsJson, null, 2));
-      logToFile(`[claude-runner] Created temp HOME with credentials at ${tempHomeDir}, file: ${credPath}`);
+
+      // Also write .claude.json with oauthAccount info (CLI checks this for login status)
+      const accountJson = {
+        oauthAccount: {
+          subscription_type: credentials.subscriptionType || 'max',
+        },
+      };
+      writeFileSync(
+        path.join(tempHomeDir, '.claude.json'),
+        JSON.stringify(accountJson, null, 2)
+      );
+
+      // Write minimal settings to skip onboarding
+      writeFileSync(
+        path.join(claudeDir, 'settings.json'),
+        JSON.stringify({ hasCompletedOnboarding: true }, null, 2)
+      );
+
+      logToFile(`[claude-runner] Created temp HOME with credentials at ${tempHomeDir}`);
       logToFile(`[claude-runner] Credentials expiresAt: ${credentials.expiresAt}, token prefix: ${credentials.accessToken.substring(0, 20)}...`);
     } catch (err) {
       logToFile(`[claude-runner] Failed to create temp credentials: ${err}`);
