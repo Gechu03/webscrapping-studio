@@ -21,12 +21,18 @@ COPY . .
 # Build Next.js
 RUN npm run build
 
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Create persistent data directories and set ownership
-RUN mkdir -p data ../projects && chown -R appuser:appuser /app ../projects
+RUN mkdir -p data ../projects /home/appuser/.claude && \
+    chown -R appuser:appuser /app ../projects /home/appuser
 
 # Switch to non-root user
 USER appuser
 
 EXPOSE 3000
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["npm", "start"]
